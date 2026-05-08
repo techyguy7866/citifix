@@ -54,6 +54,36 @@ async function main() {
       role: "CITIZEN",
       email: "citizen6@citifix.demo",
     },
+    {
+      name: "Citizen Demo 7",
+      phone: "+910000000009",
+      role: "CITIZEN",
+      email: "citizen7@citifix.demo",
+    },
+    {
+      name: "Citizen Demo 8",
+      phone: "+910000000010",
+      role: "CITIZEN",
+      email: "citizen8@citifix.demo",
+    },
+    {
+      name: "Citizen Demo 9",
+      phone: "+910000000011",
+      role: "CITIZEN",
+      email: "citizen9@citifix.demo",
+    },
+    {
+      name: "Citizen Demo 10",
+      phone: "+910000000012",
+      role: "CITIZEN",
+      email: "citizen10@citifix.demo",
+    },
+    {
+      name: "Citizen Demo 11",
+      phone: "+910000000013",
+      role: "CITIZEN",
+      email: "citizen11@citifix.demo",
+    },
   ];
 
   for (const userData of demoUsers) {
@@ -89,6 +119,11 @@ async function main() {
   console.log("  CITIZEN 4   │ Phone: 0000000006  │ OTP: 123456");
   console.log("  CITIZEN 5   │ Phone: 0000000007  │ OTP: 123456");
   console.log("  CITIZEN 6   │ Phone: 0000000008  │ OTP: 123456");
+  console.log("  CITIZEN 7   │ Phone: 0000000009  │ OTP: 123456");
+  console.log("  CITIZEN 8   │ Phone: 0000000010  │ OTP: 123456");
+  console.log("  CITIZEN 9   │ Phone: 0000000011  │ OTP: 123456");
+  console.log("  CITIZEN 10  │ Phone: 0000000012  │ OTP: 123456");
+  console.log("  CITIZEN 11  │ Phone: 0000000013  │ OTP: 123456");
   console.log("─────────────────────────────────────────────────\n");
 }
 

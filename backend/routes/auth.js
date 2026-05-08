@@ -67,6 +67,11 @@ const TEST_ACCOUNTS = [
   "+910000000006",   // CITIZEN 4  (demo)
   "+910000000007",   // CITIZEN 5  (demo)
   "+910000000008",   // CITIZEN 6  (demo)
+  "+910000000009",   // CITIZEN 7  (demo)
+  "+910000000010",   // CITIZEN 8  (demo)
+  "+910000000011",   // CITIZEN 9  (demo)
+  "+910000000012",   // CITIZEN 10 (demo)
+  "+910000000013",   // CITIZEN 11 (demo)
 ];
 const TEST_OTP = "123456";
 
