@@ -811,16 +811,13 @@ const SuperAdminPanel = () => {
 
                 <div>
                   <label className="block text-white/60 text-xs font-medium mb-1">Project Deadline</label>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={assignModal.projectDeadline}
-                      onChange={e => setAssignModal(prev => ({ ...prev, projectDeadline: e.target.value }))}
-                      className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-4 py-2.5 pr-10 focus:outline-none focus:border-emerald-500 text-sm"
-                      style={{ colorScheme: 'dark' }}
-                    />
-                    <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-400 pointer-events-none" />
-                  </div>
+                  <input
+                    type="date"
+                    value={assignModal.projectDeadline}
+                    onChange={e => setAssignModal(prev => ({ ...prev, projectDeadline: e.target.value }))}
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500 text-sm"
+                    style={{ colorScheme: 'dark' }}
+                  />
                   <p className="text-white/30 text-xs mt-1">Leave blank to use default SLA days</p>
                 </div>
 
