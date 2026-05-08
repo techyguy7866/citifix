@@ -224,6 +224,29 @@ router.post("/:id/vote", authMiddleware, async (req, res) => {
   }
 });
 
+// ── Public Heatmap endpoint (no auth needed) — MUST be before /:id ──────────
+router.get("/heatmap", async (req, res) => {
+  try {
+    const complaints = await prisma.complaint.findMany({
+      select: {
+        id: true,
+        latitude: true,
+        longitude: true,
+        category: true,
+        status: true,
+        title: true,
+        votes: true,
+        address: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(complaints);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get complaint by ID
 router.get("/:id", async (req, res) => {
   try {
@@ -316,30 +339,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   }
 });
 
-// ── Public Heatmap endpoint (no auth needed) ─────────────────────────────────
-router.get("/heatmap", async (req, res) => {
-  try {
-    const complaints = await prisma.complaint.findMany({
-      select: {
-        id: true,
-        latitude: true,
-        longitude: true,
-        category: true,
-        status: true,
-        title: true,
-        votes: true,
-        address: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    res.json(complaints);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
-// ── Resolve with proof photo (SubAdmin / Admin only) ─────────────────────────
 router.post("/:id/resolve-with-proof", authMiddleware, async (req, res) => {
   try {
     const complaintId = parseInt(req.params.id, 10);
