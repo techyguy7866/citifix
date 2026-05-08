@@ -658,10 +658,18 @@ const SuperAdminPanel = () => {
                         }`}>{issue.status}</span>
                       </div>
                       <p className="text-white/60 text-sm">{issue.description}</p>
-                      <p className="text-white/40 text-xs">
-                        Project: <span className="text-white/60">#{issue.complaint?.id} · {issue.complaint?.title}</span>
-                        {" · "} Raised by: <span className="text-white/60">{issue.raisedBy?.name}</span>
-                        {issue.assignedTo && <> · Assigned to: <span className="text-blue-400">{issue.assignedTo?.name}</span></>}
+                      <p className="text-white/40 text-xs flex flex-wrap gap-x-2 gap-y-1 mt-1">
+                        <span>Project: <span className="text-white/60">#{issue.complaint?.id} · {issue.complaint?.title}</span></span>
+                        <span>· Raised by: <span className="text-white/60">{issue.raisedBy?.name}</span></span>
+                        {issue.assignedTo && (
+                          <span>· Assigned to: <span className="text-blue-400 font-semibold">{issue.assignedTo?.name}</span>
+                            {issue.assignedTo?.department && (
+                              <span className="ml-1.5 px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full text-[10px] font-bold border border-blue-500/30">
+                                {DEPARTMENTS.find(d => d.id === issue.assignedTo.department)?.icon} {issue.assignedTo.department}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </p>
                     </div>
 
@@ -709,7 +717,7 @@ const SuperAdminPanel = () => {
             <div className="p-5 space-y-2 max-h-80 overflow-auto">
               <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-3">Select a SubAdmin to resolve this issue</p>
               {subAdmins.length === 0 ? (
-                <p className="text-center text-white/50 py-4">No Sub-Admins found.</p>
+                <p className="text-center text-white/50 py-4">No Sub-Admins found. Promote a citizen to SUBADMIN first.</p>
               ) : subAdmins.map(admin => (
                 <button
                   key={admin.id}
@@ -729,12 +737,26 @@ const SuperAdminPanel = () => {
                   }}
                   className="w-full flex items-center justify-between p-4 bg-white/5 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/30 rounded-xl transition-all text-left group disabled:opacity-50"
                 >
-                  <div>
-                    <div className="font-medium text-white group-hover:text-amber-400 transition-colors">{admin.name}</div>
-                    <div className="text-xs text-white/50">{admin.phone}</div>
-                    <div className="text-xs text-white/30">{admin._count?.assignedComplaints ?? 0} active cases</div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-lg flex-shrink-0">
+                      {DEPARTMENTS.find(d => d.id === admin.department)?.icon || '👤'}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white group-hover:text-amber-400 transition-colors">{admin.name}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {admin.department ? (
+                          <span className="text-xs font-bold px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30">
+                            {admin.department} Dept.
+                          </span>
+                        ) : (
+                          <span className="text-xs text-white/30 italic">No dept. assigned</span>
+                        )}
+                        <span className="text-xs text-white/30">{admin._count?.assignedComplaints ?? 0} active cases</span>
+                      </div>
+                      <div className="text-xs text-white/30 mt-0.5">{admin.phone}</div>
+                    </div>
                   </div>
-                  <CheckCircle className="w-5 h-5 text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <CheckCircle className="w-5 h-5 text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                 </button>
               ))}
             </div>
