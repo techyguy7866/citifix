@@ -69,7 +69,7 @@ const CATEGORY_KEYWORDS = [
       'bench', 'benches', 'sitting area',
       'grass', 'lawn', 'overgrown grass', 'open space',
       'statue', 'fountain', 'jogging', 'walkway',
-      'green', 'vegetation',
+      'green', 'vegetation', 'playground equipments',
     ],
   },
 
