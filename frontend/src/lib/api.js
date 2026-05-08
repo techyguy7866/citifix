@@ -72,6 +72,20 @@ export const complaintsApi = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+
+  heatmap: () => request("/complaints/heatmap"),
+
+  resolveWithProof: (complaintId, resolutionImageUrl) =>
+    request(`/complaints/${complaintId}/resolve-with-proof`, {
+      method: "POST",
+      body: JSON.stringify({ resolutionImageUrl }),
+    }),
+
+  challengeResolution: (complaintId, reason) =>
+    request(`/complaints/${complaintId}/challenge-resolution`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
 };
 
 export const adminApi = {

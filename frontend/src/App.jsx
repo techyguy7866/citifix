@@ -17,6 +17,7 @@ import Leaderboard from '@/pages/Leaderboard.jsx';
 import Chatbot from '@/pages/Chatbot.jsx';
 import SuperAdminPanel from '@/pages/SuperAdminPanel.jsx';
 import SubAdminDashboard from '@/pages/SubAdminDashboard.jsx';
+import CityHeatmap from '@/pages/CityHeatmap.jsx';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext.jsx';
 
 function PrivateRoute({ children, role }) {
@@ -53,6 +54,7 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/community" element={<CommunityPortal />} />
+            <Route path="/map" element={<CityHeatmap />} />
             
             <Route 
               path="/dashboard" 

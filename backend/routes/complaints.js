@@ -316,4 +316,114 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   }
 });
 
+// ── Public Heatmap endpoint (no auth needed) ─────────────────────────────────
+router.get("/heatmap", async (req, res) => {
+  try {
+    const complaints = await prisma.complaint.findMany({
+      select: {
+        id: true,
+        latitude: true,
+        longitude: true,
+        category: true,
+        status: true,
+        title: true,
+        votes: true,
+        address: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(complaints);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Resolve with proof photo (SubAdmin / Admin only) ─────────────────────────
+router.post("/:id/resolve-with-proof", authMiddleware, async (req, res) => {
+  try {
+    const complaintId = parseInt(req.params.id, 10);
+    const { resolutionImageUrl } = req.body;
+
+    if (!resolutionImageUrl) {
+      return res.status(400).json({ error: "Resolution proof photo is required" });
+    }
+
+    const complaint = await prisma.complaint.findUnique({ where: { id: complaintId } });
+    if (!complaint) return res.status(404).json({ error: "Complaint not found" });
+
+    // Only assigned subadmin or admin can resolve
+    const isAssigned = complaint.assignedAdminId === req.userId;
+    const isAdmin    = ["ADMIN", "SUPERADMIN"].includes(req.userRole);
+    if (!isAssigned && !isAdmin) {
+      return res.status(403).json({ error: "Not authorized to resolve this complaint" });
+    }
+
+    const updated = await prisma.complaint.update({
+      where: { id: complaintId },
+      data: {
+        status: "RESOLVED",
+        resolvedAt: new Date(),
+        resolutionImageUrl,
+        resolutionChallenged: false,
+      },
+      include: { user: { select: { id: true, name: true, email: true, phone: true } }, complaintVotes: { select: { userId: true } } },
+    });
+
+    // Award 10 reward points to the citizen
+    await prisma.user.update({
+      where: { id: updated.userId },
+      data: { rewardPoints: { increment: 10 } },
+    });
+
+    console.log(`[Resolution] ✅ Complaint #${complaintId} resolved with proof by user ${req.userId}`);
+    res.json(toClientComplaint(updated, { id: req.userId, role: req.userRole }));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Citizen challenges a resolution ──────────────────────────────────────────
+router.post("/:id/challenge-resolution", authMiddleware, async (req, res) => {
+  try {
+    const complaintId = parseInt(req.params.id, 10);
+    const { reason } = req.body;
+
+    if (!reason?.trim()) {
+      return res.status(400).json({ error: "Please provide a reason for challenging this resolution" });
+    }
+
+    const complaint = await prisma.complaint.findUnique({ where: { id: complaintId } });
+    if (!complaint) return res.status(404).json({ error: "Complaint not found" });
+
+    // Only the original reporter can challenge
+    if (complaint.userId !== req.userId) {
+      return res.status(403).json({ error: "Only the complaint reporter can challenge a resolution" });
+    }
+
+    if (complaint.status !== "RESOLVED") {
+      return res.status(400).json({ error: "Can only challenge resolved complaints" });
+    }
+
+    if (complaint.resolutionChallenged) {
+      return res.status(400).json({ error: "Resolution already challenged" });
+    }
+
+    const updated = await prisma.complaint.update({
+      where: { id: complaintId },
+      data: {
+        resolutionChallenged: true,
+        resolutionChallengeNote: reason.trim(),
+        status: "OPEN", // Re-open it
+      },
+      include: { user: { select: { id: true, name: true, email: true, phone: true } }, complaintVotes: { select: { userId: true } } },
+    });
+
+    console.log(`[Challenge] ⚠️ Complaint #${complaintId} resolution challenged by citizen ${req.userId}`);
+    res.json(toClientComplaint(updated, { id: req.userId, role: req.userRole }));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

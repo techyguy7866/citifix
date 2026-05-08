@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { subAdminApi } from "@/lib/api";
+import { subAdminApi, complaintsApi } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Clock, MapPin, AlertTriangle, CheckCircle, ChevronDown,
   IndianRupee, ShieldCheck, CalendarClock, FileText, X,
-  AlertOctagon, Wrench, CheckCircle2
+  AlertOctagon, Wrench, CheckCircle2, Camera, Upload, ShieldAlert
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useToast } from "@/components/ui/use-toast";
@@ -28,6 +28,11 @@ const SubAdminDashboard = () => {
   const [issueTitle, setIssueTitle] = useState("");
   const [issueDesc, setIssueDesc] = useState("");
   const [raising, setRaising] = useState(false);
+
+  // Resolution Proof modal
+  const [proofModal, setProofModal] = useState({ isOpen: false, complaintId: null, title: "" });
+  const [proofImage, setProofImage] = useState(null);
+  const [submittingProof, setSubmittingProof] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -119,6 +124,53 @@ const SubAdminDashboard = () => {
       fetchAll();
     } catch (err) {
       toast({ title: "Failed to resolve", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const compressImage = (file) => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX = 800;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else { width = Math.round(width * MAX / height); height = MAX; }
+        }
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.75));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  const handleProofImageChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const compressed = await compressImage(file);
+    setProofImage(compressed);
+  };
+
+  const handleSubmitProof = async () => {
+    if (!proofImage) {
+      toast({ title: "Please upload a proof photo", variant: "destructive" });
+      return;
+    }
+    setSubmittingProof(true);
+    try {
+      await complaintsApi.resolveWithProof(proofModal.complaintId, proofImage);
+      toast({ title: "✅ Complaint resolved with proof!", description: "The citizen will be notified." });
+      setProofModal({ isOpen: false, complaintId: null, title: "" });
+      setProofImage(null);
+      fetchAll();
+    } catch (err) {
+      toast({ title: "Failed to resolve", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmittingProof(false);
     }
   };
 
@@ -273,27 +325,20 @@ const SubAdminDashboard = () => {
 
                   {/* Actions */}
                   <div className="pt-3 border-t border-white/10 space-y-3 mt-auto">
-                    {/* Status Update — disabled when on hold */}
-                    <div>
-                      <label className="block text-xs font-medium text-white/50 mb-2 uppercase tracking-wider">Update Status</label>
-                      <div className="relative">
-                        <select
-                          className={`w-full appearance-none bg-white/10 border border-white/20 text-white rounded-xl px-4 py-3 pr-10 focus:outline-none transition-all ${
-                            isOnHold || complaint.status === "resolved" ? "opacity-40 cursor-not-allowed" : "focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50"
-                          }`}
-                          value={complaint.status}
-                          onChange={(e) => handleStatusChange(complaint.id, e.target.value)}
-                          disabled={complaint.status === "resolved" || isOnHold}
-                        >
-                          <option value="assigned" className="bg-gray-900">🟡 IN PROGRESS</option>
-                          <option value="resolved" className="bg-gray-900">🟢 RESOLVED</option>
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50 pointer-events-none" />
+                    {/* Resolve with Proof button */}
+                    {complaint.status !== "resolved" && !isOnHold && (
+                      <button
+                        onClick={() => { setProofImage(null); setProofModal({ isOpen: true, complaintId: complaint.id, title: complaint.title }); }}
+                        className="w-full py-3 bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2"
+                      >
+                        <ShieldCheck className="w-4 h-4" /> Resolve with Proof Photo
+                      </button>
+                    )}
+                    {complaint.status === "resolved" && (
+                      <div className="flex items-center justify-center gap-2 py-2 text-emerald-400 text-sm font-semibold">
+                        <CheckCircle2 className="w-4 h-4" /> Resolved
                       </div>
-                      {isOnHold && (
-                        <p className="text-amber-400/70 text-xs mt-1">⚠️ Status locked while a raised issue is pending</p>
-                      )}
-                    </div>
+                    )}
 
                     <div className="flex gap-2">
                       {/* Request Extension button */}
@@ -316,6 +361,9 @@ const SubAdminDashboard = () => {
                         </button>
                       )}
                     </div>
+                    {isOnHold && (
+                      <p className="text-amber-400/70 text-xs text-center">⚠️ Status locked while a raised issue is pending</p>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -459,6 +507,73 @@ const SubAdminDashboard = () => {
                   className="w-full py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2">
                   <AlertOctagon className="w-4 h-4" />
                   {raising ? "Raising Issue..." : "Raise Issue"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Resolution Proof Modal ─── */}
+      <AnimatePresence>
+        {proofModal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#111] border border-emerald-500/30 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              <div className="flex justify-between items-center p-5 border-b border-white/10">
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400" /> Resolve with Proof
+                  </h3>
+                  <p className="text-white/40 text-sm mt-0.5 line-clamp-1">{proofModal.title}</p>
+                </div>
+                <button onClick={() => { setProofModal({ isOpen: false, complaintId: null, title: "" }); setProofImage(null); }} className="text-white/40 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-sm text-emerald-300">
+                  📸 Upload an "after" photo showing the issue has been fixed. The citizen will see this proof and can challenge if unsatisfied.
+                </div>
+
+                <div className="flex gap-3">
+                  <label className="flex-1 cursor-pointer">
+                    <div className="bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white rounded-xl p-4 flex flex-col items-center justify-center gap-2 transition-all">
+                      <Camera className="w-6 h-6 text-emerald-400" />
+                      <span className="text-sm font-medium">Take Photo</span>
+                    </div>
+                    <input type="file" accept="image/*" capture="environment" onChange={handleProofImageChange} className="hidden" />
+                  </label>
+                  <label className="flex-1 cursor-pointer">
+                    <div className="bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white rounded-xl p-4 flex flex-col items-center justify-center gap-2 transition-all">
+                      <Upload className="w-6 h-6 text-indigo-400" />
+                      <span className="text-sm font-medium">Upload File</span>
+                    </div>
+                    <input type="file" accept="image/*" onChange={handleProofImageChange} className="hidden" />
+                  </label>
+                </div>
+
+                {proofImage && (
+                  <div className="relative">
+                    <img src={proofImage} alt="Proof preview" className="w-full rounded-xl max-h-48 object-cover border border-emerald-500/30" />
+                    <div className="absolute top-2 right-2 bg-emerald-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" /> Ready
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSubmitProof}
+                  disabled={submittingProof || !proofImage}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+                >
+                  {submittingProof
+                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    : <><CheckCircle2 className="w-4 h-4" /> Submit Resolution Proof</>}
                 </button>
               </div>
             </motion.div>

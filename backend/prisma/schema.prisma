@@ -66,6 +66,11 @@ model Complaint {
   extensionRequests  ExtensionRequest[]
   raisedIssues       RaisedIssue[]
   isOnHold           Boolean         @default(false)
+  // ── Resolution Proof System ────────────────────────────────────
+  resolutionImageUrl      String?
+  resolutionChallenged    Boolean  @default(false)
+  resolutionChallengeNote String?
+  // ────────────────────────────────────────────────────────────────
   userId             Int
   user               User            @relation("UserComplaints", fields: [userId], references: [id])
   complaintVotes     ComplaintVote[]

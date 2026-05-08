@@ -43,13 +43,19 @@ export default function Navbar() {
           >
             <Button
               variant="outline"
+              className="bg-white/10 text-white text-sm border-white/20 hover:bg-white/20 inline-flex items-center gap-2"
+              onClick={() => navigate("/map")}
+            >
+              🗺️ Live Map
+            </Button>
+
+            <Button
+              variant="outline"
               className="bg-white/30 text-white text-sm border-white/20 hover:bg-white/15 inline-flex items-center gap-2"
               onClick={() => navigate("/login")}
             >
               <User className="h-5 w-5" /> Login
             </Button>
-
-           
 
             <Button
               className="bg-white/90 hover:bg-white/20 border border-white hover:text-white text-black/90 rounded-3xl text-sm px-6"
@@ -71,6 +77,13 @@ export default function Navbar() {
 
         {open && (
           <div className="sm:hidden px-4 pb-4 pt-2 space-y-2">
+            <Button
+              variant="outline"
+              className="w-full bg-white/10 text-white border-white/20 inline-flex items-center gap-2 hover:bg-white/20"
+              onClick={() => { navigate("/map"); setOpen(false); }}
+            >
+              🗺️ Live City Map
+            </Button>
             <Button
               variant="outline"
               className="w-full bg-white/30 text-white border-white/20  inline-flex items-center gap-2 hover:bg-white/15"
