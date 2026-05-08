@@ -61,7 +61,12 @@ const TEST_ACCOUNTS = [
   // ── Demo accounts (OTP: 123456) ──
   "+910000000001",   // SUPERADMIN (demo)
   "+910000000002",   // SUBADMIN   (demo)
-  "+910000000003",   // CITIZEN    (demo)
+  "+910000000003",   // CITIZEN 1  (demo)
+  "+910000000004",   // CITIZEN 2  (demo)
+  "+910000000005",   // CITIZEN 3  (demo)
+  "+910000000006",   // CITIZEN 4  (demo)
+  "+910000000007",   // CITIZEN 5  (demo)
+  "+910000000008",   // CITIZEN 6  (demo)
 ];
 const TEST_OTP = "123456";
 
