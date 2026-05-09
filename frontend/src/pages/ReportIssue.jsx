@@ -26,7 +26,7 @@ const getDistanceKm = (lat1, lng1, lat2, lng2) => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const THRESHOLD_KM = 2; // max allowed distance — 2km accounts for GPS drift on some devices
+const THRESHOLD_KM = 1; // max allowed distance between photo GPS and live GPS
 
 const ReportIssue = () => {
     const { user } = useAuth();
@@ -69,30 +69,19 @@ const ReportIssue = () => {
 
     const handleLocation = async () => {
         setIsFetchingLocation(true);
-        toast({ title: '📡 Acquiring GPS...', description: 'Please wait up to 25 seconds for accurate lock.' });
         try {
             const loc = await getCurrentLocation();
             setLocation(loc);
             const address = await reverseGeocode(loc.latitude, loc.longitude);
             setLocationAddress(address);
+            toast({ title: 'Location captured!' });
 
-            const accMsg = loc.fallback
-                ? '⚠️ Using approximate IP location — GPS unavailable on this device.'
-                : loc.accuracy <= 20  ? `✅ Excellent GPS accuracy (±${Math.round(loc.accuracy)}m)`
-                : loc.accuracy <= 100 ? `✅ Good GPS accuracy (±${Math.round(loc.accuracy)}m)`
-                : `⚠️ Low GPS accuracy (±${Math.round(loc.accuracy)}m) — move outdoors for better signal`;
-
-            toast({ title: 'Location captured!', description: accMsg });
-
-            // Re-run mismatch check if photo already has EXIF GPS
-            if (exifGps && !loc.fallback) {
+            // If photo already has EXIF GPS, re-run the mismatch check with new live location
+            if (exifGps) {
                 runMismatchCheck(exifGps, loc);
-            } else if (loc.fallback) {
-                // IP fallback is too inaccurate for EXIF cross-check — skip mismatch
-                setLocationMismatch(false);
             }
         } catch (error) {
-            toast({ title: 'Could not get location', description: 'Please enable location services and try again.', variant: 'destructive' });
+            toast({ title: 'Could not get location', description: 'Please enable location services.', variant: 'destructive' });
         }
         setIsFetchingLocation(false);
     };
@@ -170,35 +159,23 @@ const ReportIssue = () => {
 
     // Derive overall verification status
     const verificationStatus = () => {
-        if (!image) return null;                      // no photo yet
-        if (!location) return 'need_location';        // no live GPS yet — always need it
-        if (location.fallback) return 'ip_fallback';  // IP location — approximate but acceptable
-        if (noExifGps) return 'no_exif_ok';           // no EXIF but live GPS captured — OK
-        if (!exifGps) return 'loading';               // still parsing EXIF
-        if (!locationMismatch) return 'match';        // EXIF GPS matches live GPS ✅
-        if (locationMismatch) return 'mismatch';      // EXIF GPS too far from live GPS ❌
+        if (!image) return null; // no photo yet
+        if (noExifGps) return 'no_exif';
+        if (!exifGps) return 'loading'; // still parsing EXIF
+        if (!location) return 'need_location'; // photo has GPS but we haven't captured live GPS yet
+        if (!locationMismatch) return 'match';
+        if (locationMismatch) return 'mismatch';
         return null;
     };
     const vStatus = verificationStatus();
 
-    // Can submit if we have a photo + live location (regardless of EXIF)
-    const canSubmit = image && location && (vStatus === 'match' || vStatus === 'no_exif_ok' || vStatus === 'ip_fallback');
-
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!canSubmit) {
+        if (vStatus !== 'match') {
             toast({
-                title: 'Cannot Submit',
-                description: !image ? 'Please upload a photo.' : 'Please capture your live location first.',
-                variant: 'destructive',
-            });
-            return;
-        }
-        if (vStatus === 'mismatch') {
-            toast({
-                title: 'Location Mismatch',
-                description: `Your photo GPS is ${mismatchDistKm}km from your current location. Please take a photo at the actual site.`,
+                title: 'Cannot Submit Report',
+                description: 'You must upload a photo with GPS data that matches your current live location.',
                 variant: 'destructive',
             });
             return;
@@ -335,14 +312,12 @@ const ReportIssue = () => {
 
                     {/* ── EXIF / Location Verification Panel ── */}
                     {vStatus && (
-                        <div className={`rounded-xl border p-4 space-y-2 ${
-                            vStatus === 'loading'      ? 'bg-slate-700/50  border-slate-600'      :
-                            vStatus === 'match'        ? 'bg-emerald-500/10 border-emerald-500/30' :
-                            vStatus === 'no_exif_ok'   ? 'bg-emerald-500/10 border-emerald-500/30' :
-                            vStatus === 'ip_fallback'  ? 'bg-amber-500/10   border-amber-500/30'   :
-                            vStatus === 'mismatch'     ? 'bg-rose-500/10    border-rose-500/30'    :
-                            /* need_location / loading */ 'bg-slate-700/50   border-slate-600'
-                        }`}>
+                        <div className={`rounded-xl border p-4 space-y-2 ${vStatus === 'loading' ? 'bg-slate-700/50  border-slate-600' :
+                                vStatus === 'match' ? 'bg-emerald-500/10 border-emerald-500/30' :
+                                    vStatus === 'mismatch' ? 'bg-rose-500/10   border-rose-500/30' :
+                                        vStatus === 'no_exif' ? 'bg-blue-500/10   border-blue-500/30' :
+                            /* need_location */            'bg-slate-700/50   border-slate-600'
+                            }`}>
 
                             {/* LOADING EXIF */}
                             {vStatus === 'loading' && (
@@ -355,67 +330,56 @@ const ReportIssue = () => {
                                 </div>
                             )}
 
-                            {/* NEED LIVE LOCATION */}
-                            {vStatus === 'need_location' && (
-                                <div className="flex items-start gap-2 text-slate-300">
-                                    <MapPin className="w-5 h-5 flex-shrink-0 mt-0.5 text-indigo-400" />
-                                    <div>
-                                        <p className="text-sm font-bold">Live Location Required</p>
-                                        <p className="text-xs text-slate-400">Click "Get Live Location" above to verify you are at the site.</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* MATCH ✅ */}
+                            {/* MATCH */}
                             {vStatus === 'match' && exifGps && (
                                 <div className="flex items-center gap-2 text-emerald-400">
                                     <ShieldCheck className="w-5 h-5 flex-shrink-0" />
                                     <div>
                                         <p className="text-sm font-bold">Location Verified ✓</p>
                                         <p className="text-xs text-emerald-300/70">
-                                            Photo GPS matches your live location ({mismatchDistKm} km apart). Ready to submit.
+                                            Photo GPS ({exifGps.latitude.toFixed(4)}, {exifGps.longitude.toFixed(4)}) matches your live location ({mismatchDistKm} km apart).
                                         </p>
                                     </div>
                                 </div>
                             )}
 
-                            {/* NO EXIF but live location OK ✅ */}
-                            {vStatus === 'no_exif_ok' && (
-                                <div className="flex items-center gap-2 text-emerald-400">
-                                    <ShieldCheck className="w-5 h-5 flex-shrink-0" />
-                                    <div>
-                                        <p className="text-sm font-bold">Location Captured ✓</p>
-                                        <p className="text-xs text-emerald-300/70">
-                                            Your photo has no embedded GPS (common for gallery/WhatsApp photos). Your live GPS location
-                                            {location?.accuracy ? ` (±${Math.round(location.accuracy)}m accuracy)` : ''} will be used. Ready to submit.
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* IP FALLBACK ⚠️ */}
-                            {vStatus === 'ip_fallback' && (
-                                <div className="flex items-start gap-2 text-amber-400">
-                                    <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="text-sm font-bold">Approximate Location (IP-based)</p>
-                                        <p className="text-xs text-amber-300/70">
-                                            Your device GPS is unavailable. Location is based on your internet connection (~city level).
-                                            Submission allowed but accuracy may be low. For better accuracy, enable device GPS and retry.
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* MISMATCH ❌ */}
+                            {/* MISMATCH */}
                             {vStatus === 'mismatch' && exifGps && (
                                 <div className="flex items-start gap-2 text-rose-400">
                                     <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                                     <div>
-                                        <p className="text-sm font-bold">Location Mismatch — {mismatchDistKm} km apart</p>
+                                        <p className="text-sm font-bold">Location Mismatch Detected</p>
                                         <p className="text-xs text-rose-300/70">
-                                            Your photo was taken {mismatchDistKm} km from your current location.
-                                            Please take a fresh photo at the actual issue site, or recapture your live location if you are already there.
+                                            Your photo's GPS ({exifGps.latitude.toFixed(4)}, {exifGps.longitude.toFixed(4)}) is <strong>{mismatchDistKm} km</strong> away from your current location.
+                                            You must report issues from the actual location.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* NO EXIF GPS */}
+                            {vStatus === 'no_exif' && (
+                                <div className="flex items-start gap-2 text-blue-400">
+                                    <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="text-sm font-bold">No GPS Data in Photo</p>
+                                        <p className="text-xs text-blue-300/70">
+                                            Your photo doesn't contain embedded GPS metadata (common for screenshots, WhatsApp downloads, or photos taken with GPS disabled).
+                                            We'll use your <strong>live location</strong> to verify the report location instead.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* HAS EXIF — WAITING FOR LIVE GPS */}
+                            {vStatus === 'need_location' && exifGps && (
+                                <div className="flex items-start gap-2 text-slate-400">
+                                    <MapPin className="w-5 h-5 flex-shrink-0 mt-0.5 text-indigo-400" />
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-300">Photo GPS Found — Capture Live Location to Verify</p>
+                                        <p className="text-xs text-slate-400">
+                                            Photo GPS: {exifGps.latitude.toFixed(4)}, {exifGps.longitude.toFixed(4)}.
+                                            Click "Get Live Location" above to compare it with your current position.
                                         </p>
                                     </div>
                                 </div>
@@ -427,17 +391,19 @@ const ReportIssue = () => {
                     <Button
                         type="submit"
                         className="w-full gradient-saffron text-white"
-                        disabled={isSubmitting || !canSubmit || vStatus === 'mismatch'}
+                        disabled={isSubmitting || vStatus !== 'match'}
                     >
                         {isSubmitting
                             ? <><Loader2 className="animate-spin w-4 h-4 mr-2" /> Submitting...</>
                             : vStatus === 'mismatch'
-                            ? `⚠️ Photo taken ${mismatchDistKm}km away — Retake at site`
-                            : vStatus === 'need_location'
-                            ? '📍 Capture Live Location First'
-                            : !image
-                            ? '📷 Upload a Photo First'
-                            : <><CheckCircle2 className="w-4 h-4 mr-2" /> Submit Report</>
+                                ? '⚠️ Location Mismatch (Cannot Submit)'
+                                : vStatus === 'no_exif'
+                                    ? '⚠️ No GPS Data in Photo (Cannot Submit)'
+                                    : vStatus === 'need_location'
+                                        ? '⚠️ Capture Live Location First'
+                                        : !image
+                                            ? '⚠️ Upload a Photo First'
+                                            : <><CheckCircle2 className="w-4 h-4 mr-2" /> Submit Report</>
                         }
                     </Button>
                 </form>
