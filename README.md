@@ -1,6 +1,6 @@
 🚨 CitiFix 2.0 — Community-Driven Civic Issue Resolution Platform
 
-🔗 Live Deployment: 👉 https://citifix.vercel.app
+🔗 Live Deployment: 👉 https://citifix-nine.vercel.app
 use mock aadhar card:123456654321 when you're registering
 
 🏆 Problem Statement
@@ -145,4 +145,4 @@ This platform is designed not just as a hackathon prototype, but as a real-world
 🌐 Live Demo
 
 🔗 Try it here:
-👉 https://citifix21.vercel.app/
+👉 https://citifix-nine.vercel.app/
