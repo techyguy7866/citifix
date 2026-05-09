@@ -25,6 +25,8 @@ model User {
   extensionRequests     ExtensionRequest[] @relation("ExtensionRequests")
   raisedIssues          RaisedIssue[]      @relation("RaisedIssuesByUser")
   assignedRaisedIssues  RaisedIssue[]      @relation("RaisedIssuesAssignedTo")
+  bidsCreated           ProjectBid[]       @relation("BidsCreated")
+  bidProposals          BidProposal[]      @relation("ProposalsSubmitted")
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 }
@@ -65,6 +67,7 @@ model Complaint {
   projectNote        String?
   extensionRequests  ExtensionRequest[]
   raisedIssues       RaisedIssue[]
+  bids               ProjectBid[]
   isOnHold           Boolean         @default(false)
   // ── Resolution Proof System ────────────────────────────────────
   resolutionImageUrl      String?
@@ -196,4 +199,54 @@ model RaisedIssue {
   status       RaisedIssueStatus @default(PENDING)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+}
+
+// ─── Project Bidding System ──────────────────────────────────────────────────
+
+enum BidStatus {
+  OPEN
+  CLOSED
+  AWARDED
+}
+
+enum ProposalStatus {
+  PENDING
+  AWARDED
+  REJECTED
+}
+
+model ProjectBid {
+  id               Int            @id @default(autoincrement())
+  complaintId      Int
+  complaint        Complaint      @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  createdById      Int
+  createdBy        User           @relation("BidsCreated", fields: [createdById], references: [id])
+  department       String
+  title            String
+  scope            String
+  estimatedBudget  Float?
+  deadline         DateTime
+  projectTimeline  Int            // expected days to complete
+  status           BidStatus      @default(OPEN)
+  awardedProposalId Int?
+  proposals        BidProposal[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model BidProposal {
+  id           Int            @id @default(autoincrement())
+  bidId        Int
+  bid          ProjectBid     @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  subAdminId   Int
+  subAdmin     User           @relation("ProposalsSubmitted", fields: [subAdminId], references: [id])
+  quotedBudget Float
+  proposedDays Int
+  teamSize     Int?
+  approach     String
+  status       ProposalStatus @default(PENDING)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([bidId, subAdminId])
 }

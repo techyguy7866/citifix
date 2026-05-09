@@ -126,6 +126,19 @@ export const subAdminApi = {
   resolveRaisedIssue: (id) => request(`/subadmin/raised-issues/${id}/resolve`, { method: "PATCH" }),
 };
 
+export const bidsApi = {
+  // SuperAdmin
+  create: (data) => request("/bids", { method: "POST", body: JSON.stringify(data) }),
+  list: () => request("/bids"),
+  getProposals: (bidId) => request(`/bids/${bidId}/proposals`),
+  award: (bidId, proposalId) => request(`/bids/${bidId}/award/${proposalId}`, { method: "POST" }),
+  cancel: (bidId) => request(`/bids/${bidId}`, { method: "DELETE" }),
+  // SubAdmin
+  myDeptBids: () => request("/bids/my-dept"),
+  submitProposal: (bidId, data) => request(`/bids/${bidId}/propose`, { method: "POST", body: JSON.stringify(data) }),
+  myProposal: (bidId) => request(`/bids/${bidId}/my-proposal`),
+};
+
 export const chatApi = {
   sendMessage: (message, history = []) =>
     request("/chat", {

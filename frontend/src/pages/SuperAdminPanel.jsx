@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { superAdminApi, adminApi } from "@/lib/api";
+import { superAdminApi, adminApi, bidsApi } from "@/lib/api";
 import { motion } from "framer-motion";
-import { Users, ClipboardList, Clock, Search, Shield, ShieldOff, AlertTriangle, CheckCircle, UserPlus, X, BarChart2, AlertOctagon, Calendar } from "lucide-react";
+import { Users, ClipboardList, Clock, Search, Shield, ShieldOff, AlertTriangle, CheckCircle, UserPlus, X, BarChart2, AlertOctagon, Calendar, Gavel, IndianRupee, ChevronDown, ChevronUp, Trophy } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useToast } from "@/components/ui/use-toast";
 import {
@@ -57,6 +57,16 @@ const SuperAdminPanel = () => {
   // Department-selection modal state (shown when promoting a user to SUBADMIN)
   const [deptModal, setDeptModal] = useState({ isOpen: false, userId: null, userName: "" });
 
+  // ── Bid system states ────────────────────────────────────────────
+  const [bids, setBids] = useState([]);
+  const [expandedBid, setExpandedBid] = useState(null);
+  const [awardingProposalId, setAwardingProposalId] = useState(null);
+  const [newBid, setNewBid] = useState({
+    complaintId: "", title: "", scope: "",
+    estimatedBudget: "", deadline: "", projectTimeline: ""
+  });
+  const [creatingBid, setCreatingBid] = useState(false);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -64,19 +74,21 @@ const SuperAdminPanel = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [usersData, complaintsData, slaData, analyticsData, extRequestsData, raisedIssuesData] = await Promise.all([
+      const [usersData, complaintsData, slaData, analyticsData, extRequestsData, raisedIssuesData, bidsData] = await Promise.all([
         superAdminApi.users(),
         adminApi.complaints(),
         superAdminApi.getSlaConfigs(),
         superAdminApi.getAnalytics(),
         superAdminApi.getExtensionRequests(),
         superAdminApi.getRaisedIssues(),
+        bidsApi.list(),
       ]);
       setUsers(usersData);
       setComplaints(complaintsData.complaints || []);
       setAnalytics(analyticsData);
       setExtensionRequests(extRequestsData);
       setRaisedIssues(raisedIssuesData);
+      setBids(bidsData);
       
       // Merge SLA configs with defaults
       const mergedSlas = DEPARTMENTS.map(dept => {
@@ -173,6 +185,50 @@ const SuperAdminPanel = () => {
     }
   };
 
+  const handleCreateBid = async () => {
+    if (!newBid.complaintId || !newBid.title || !newBid.scope || !newBid.deadline || !newBid.projectTimeline) {
+      toast({ title: "Please fill all required bid fields", variant: "destructive" });
+      return;
+    }
+    setCreatingBid(true);
+    try {
+      const created = await bidsApi.create(newBid);
+      setBids(prev => [created, ...prev]);
+      setNewBid({ complaintId: "", title: "", scope: "", estimatedBudget: "", deadline: "", projectTimeline: "" });
+      toast({ title: "🏛️ Bid raised successfully!", description: "All SubAdmins in the department have been notified." });
+    } catch (err) {
+      toast({ title: "Failed to create bid", description: err.message, variant: "destructive" });
+    } finally {
+      setCreatingBid(false);
+    }
+  };
+
+  const handleAwardBid = async (bidId, proposalId, subAdminName) => {
+    if (!window.confirm(`Award this bid to ${subAdminName}? This will auto-assign them to the complaint and reject all other proposals.`)) return;
+    setAwardingProposalId(proposalId);
+    try {
+      const updated = await bidsApi.award(bidId, proposalId);
+      setBids(prev => prev.map(b => b.id === bidId ? updated : b));
+      await fetchData(); // refresh complaints too
+      toast({ title: `✅ Bid awarded to ${subAdminName}!`, description: "They have been auto-assigned to the complaint." });
+    } catch (err) {
+      toast({ title: "Failed to award bid", description: err.message, variant: "destructive" });
+    } finally {
+      setAwardingProposalId(null);
+    }
+  };
+
+  const handleCancelBid = async (bidId) => {
+    if (!window.confirm("Cancel this bid? All proposals will be discarded.")) return;
+    try {
+      const updated = await bidsApi.cancel(bidId);
+      setBids(prev => prev.map(b => b.id === bidId ? updated : b));
+      toast({ title: "Bid cancelled" });
+    } catch (err) {
+      toast({ title: "Failed to cancel bid", description: err.message, variant: "destructive" });
+    }
+  };
+
   // --- Render Helpers ---
 
   const filteredUsers = users.filter(u => 
@@ -264,6 +320,19 @@ const SuperAdminPanel = () => {
           {raisedIssues.filter(r => r.status === "PENDING").length > 0 && (
             <span className="bg-amber-500 text-white text-xs font-bold rounded-full px-2 py-0.5 ml-1">
               {raisedIssues.filter(r => r.status === "PENDING").length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("bids")}
+          className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${
+            activeTab === "bids" ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20"
+          }`}
+        >
+          <Gavel className="w-5 h-5" /> Project Bids
+          {bids.filter(b => b.status === "OPEN" && b.proposals.length > 0).length > 0 && (
+            <span className="bg-emerald-500 text-white text-xs font-bold rounded-full px-2 py-0.5 ml-1">
+              {bids.filter(b => b.status === "OPEN" && b.proposals.length > 0).length}
             </span>
           )}
         </button>
@@ -695,7 +764,223 @@ const SuperAdminPanel = () => {
         </div>
       )}
 
-      {/* Raised Issue Assign SubAdmin Modal */}
+      {/* TAB 7: PROJECT BIDS */}
+      {activeTab === "bids" && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+
+          {/* ── Create New Bid ── */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+            <div className="p-5 border-b border-white/10 flex items-center gap-3">
+              <div className="w-9 h-9 bg-amber-500/20 rounded-xl flex items-center justify-center">
+                <Gavel className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white">Raise a New Project Bid</h3>
+                <p className="text-white/40 text-xs">Broadcast to all SubAdmins in the complaint's department</p>
+              </div>
+            </div>
+            <div className="p-5 grid sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="block text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Select Complaint *</label>
+                <select
+                  value={newBid.complaintId}
+                  onChange={e => {
+                    const c = complaints.find(x => x.id === parseInt(e.target.value));
+                    setNewBid(prev => ({ ...prev, complaintId: e.target.value, title: c ? `${c.category} — ${c.title}` : "" }));
+                  }}
+                  className="w-full bg-black border border-white/20 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm"
+                >
+                  <option value="">— choose an unassigned complaint —</option>
+                  {complaints.filter(c => !c.assignedAdminId && c.status !== "resolved").map(c => (
+                    <option key={c.id} value={c.id}>#{c.id} · [{c.category}] {c.title}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Bid Title *</label>
+                <input
+                  type="text" placeholder="e.g. Road Repair — GN Block Sector V"
+                  value={newBid.title}
+                  onChange={e => setNewBid(p => ({ ...p, title: e.target.value }))}
+                  className="w-full bg-black border border-white/20 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Scope of Work *</label>
+                <textarea
+                  rows={3} placeholder="Describe the work scope, materials needed, site conditions..."
+                  value={newBid.scope}
+                  onChange={e => setNewBid(p => ({ ...p, scope: e.target.value }))}
+                  className="w-full bg-black border border-white/20 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Estimated Budget (₹)</label>
+                <input
+                  type="number" placeholder="Optional reference amount"
+                  value={newBid.estimatedBudget}
+                  onChange={e => setNewBid(p => ({ ...p, estimatedBudget: e.target.value }))}
+                  className="w-full bg-black border border-white/20 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Expected Timeline (days) *</label>
+                <input
+                  type="number" min="1" placeholder="e.g. 14"
+                  value={newBid.projectTimeline}
+                  onChange={e => setNewBid(p => ({ ...p, projectTimeline: e.target.value }))}
+                  className="w-full bg-black border border-white/20 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Proposal Deadline *</label>
+                <input
+                  type="date"
+                  value={newBid.deadline}
+                  onChange={e => setNewBid(p => ({ ...p, deadline: e.target.value }))}
+                  className="w-full bg-black border border-white/20 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm [color-scheme:dark]"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={handleCreateBid}
+                  disabled={creatingBid}
+                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-bold rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                >
+                  <Gavel className="w-4 h-4" />
+                  {creatingBid ? "Raising Bid..." : "🏛️ Raise Bid"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Active Bids List ── */}
+          <div>
+            <h3 className="text-lg font-bold text-white mb-4">All Project Bids</h3>
+            {bids.length === 0 ? (
+              <div className="text-center py-16 text-white/30 italic bg-white/5 rounded-2xl border border-white/10">No bids raised yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {bids.map(bid => {
+                  const isExpanded = expandedBid === bid.id;
+                  const minBudget = bid.proposals.length > 0 ? Math.min(...bid.proposals.map(p => p.quotedBudget)) : null;
+                  const minDays = bid.proposals.length > 0 ? Math.min(...bid.proposals.map(p => p.proposedDays)) : null;
+
+                  return (
+                    <div key={bid.id} className={`rounded-2xl border overflow-hidden transition-all ${
+                      bid.status === "OPEN" ? "border-amber-500/30 bg-amber-500/5" :
+                      bid.status === "AWARDED" ? "border-emerald-500/30 bg-emerald-500/5" :
+                      "border-white/10 bg-white/5 opacity-60"
+                    }`}>
+                      {/* Bid Header */}
+                      <div className="p-5 flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                              bid.status === "OPEN" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
+                              bid.status === "AWARDED" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                              "bg-white/10 text-white/50 border-white/10"
+                            }`}>{bid.status}</span>
+                            <span className="text-white/40 text-xs">#{bid.complaint?.id} · {bid.department}</span>
+                          </div>
+                          <h4 className="font-bold text-white">{bid.title}</h4>
+                          <p className="text-white/50 text-sm line-clamp-1 mt-0.5">{bid.scope}</p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-white/40">
+                            {bid.estimatedBudget && <span>Est. ₹{bid.estimatedBudget.toLocaleString()}</span>}
+                            <span>Timeline: {bid.projectTimeline}d</span>
+                            <span>Deadline: {new Date(bid.deadline).toLocaleDateString()}</span>
+                            <span className={`font-bold ${ bid.proposals.length > 0 ? "text-emerald-400" : "text-white/30" }`}>
+                              {bid.proposals.length} proposal{bid.proposals.length !== 1 ? "s" : ""}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {bid.status === "OPEN" && (
+                            <button
+                              onClick={() => handleCancelBid(bid.id)}
+                              className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg text-xs font-medium transition-all"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                          {bid.proposals.length > 0 && (
+                            <button
+                              onClick={() => setExpandedBid(isExpanded ? null : bid.id)}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white border border-white/10 rounded-lg text-xs font-medium transition-all"
+                            >
+                              {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                              {isExpanded ? "Hide" : "View"} Proposals
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Proposals Panel */}
+                      {isExpanded && bid.proposals.length > 0 && (
+                        <div className="border-t border-white/10 divide-y divide-white/5">
+                          <div className="px-5 py-2 bg-white/5">
+                            <p className="text-white/40 text-xs font-semibold uppercase tracking-wider">Proposals received — sorted by lowest budget</p>
+                          </div>
+                          {bid.proposals.map((proposal) => {
+                            const isCheapest = proposal.quotedBudget === minBudget;
+                            const isFastest = proposal.proposedDays === minDays;
+                            const isAwarded = proposal.status === "AWARDED";
+                            const isRejected = proposal.status === "REJECTED";
+
+                            return (
+                              <div key={proposal.id} className={`p-5 flex flex-wrap gap-4 items-start ${
+                                isAwarded ? "bg-emerald-500/10" : isRejected ? "opacity-40" : ""
+                              }`}>
+                                <div className="flex-1 min-w-[200px]">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-semibold text-white">{proposal.subAdmin.name}</span>
+                                    {isAwarded && <Trophy className="w-4 h-4 text-amber-400" />}
+                                    {isCheapest && !isRejected && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/30">Lowest Budget</span>
+                                    )}
+                                    {isFastest && !isRejected && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30">Fastest</span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                                    <span className="text-amber-400 font-bold">₹{proposal.quotedBudget.toLocaleString()}</span>
+                                    <span className="text-white/60">{proposal.proposedDays} days</span>
+                                    {proposal.teamSize && <span className="text-white/60">{proposal.teamSize} workers</span>}
+                                  </div>
+                                  <p className="text-white/50 text-xs mt-1.5 line-clamp-2">{proposal.approach}</p>
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
+                                  {isAwarded ? (
+                                    <span className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold">✓ AWARDED</span>
+                                  ) : isRejected ? (
+                                    <span className="px-3 py-1.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-xl text-xs font-bold">✗ REJECTED</span>
+                                  ) : bid.status === "OPEN" ? (
+                                    <button
+                                      onClick={() => handleAwardBid(bid.id, proposal.id, proposal.subAdmin.name)}
+                                      disabled={awardingProposalId === proposal.id}
+                                      className="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 border border-amber-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                      <Trophy className="w-4 h-4" />
+                                      {awardingProposalId === proposal.id ? "Awarding..." : "Award Bid"}
+                                    </button>
+                                  ) : null}
+                                  <span className="text-white/30 text-xs">Submitted {new Date(proposal.createdAt).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+
       {raisedIssueAssignModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <motion.div

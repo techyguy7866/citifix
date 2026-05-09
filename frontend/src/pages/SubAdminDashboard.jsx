@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { subAdminApi, complaintsApi } from "@/lib/api";
+import { subAdminApi, complaintsApi, bidsApi } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Clock, MapPin, AlertTriangle, CheckCircle, ChevronDown,
   IndianRupee, ShieldCheck, CalendarClock, FileText, X,
-  AlertOctagon, Wrench, CheckCircle2, Camera, Upload, ShieldAlert
+  AlertOctagon, Wrench, CheckCircle2, Camera, Upload, ShieldAlert, Gavel, Trophy, ChevronUp
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useToast } from "@/components/ui/use-toast";
@@ -16,6 +16,12 @@ const SubAdminDashboard = () => {
   const [complaints, setComplaints] = useState([]);
   const [assignedRaisedIssues, setAssignedRaisedIssues] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Bid system states
+  const [deptBids, setDeptBids] = useState([]);
+  const [expandedBidId, setExpandedBidId] = useState(null);
+  const [proposalForms, setProposalForms] = useState({}); // { [bidId]: { quotedBudget, proposedDays, teamSize, approach } }
+  const [submittingProposal, setSubmittingProposal] = useState(null); // bidId being submitted
 
   // Extension modal
   const [extensionModal, setExtensionModal] = useState({ isOpen: false, complaintId: null });
@@ -40,12 +46,14 @@ const SubAdminDashboard = () => {
 
   const fetchAll = async () => {
     try {
-      const [complaintsData, raisedData] = await Promise.all([
+      const [complaintsData, raisedData, bidsData] = await Promise.all([
         subAdminApi.myComplaints(),
         subAdminApi.getAssignedRaisedIssues(),
+        bidsApi.myDeptBids(),
       ]);
       setComplaints(complaintsData);
       setAssignedRaisedIssues(raisedData);
+      setDeptBids(bidsData);
     } catch (err) {
       toast({ title: "Error fetching data", description: err.message, variant: "destructive" });
     } finally {
@@ -125,6 +133,43 @@ const SubAdminDashboard = () => {
     } catch (err) {
       toast({ title: "Failed to resolve", description: err.message, variant: "destructive" });
     }
+  };
+
+  const handleSubmitProposal = async (bidId) => {
+    const form = proposalForms[bidId];
+    if (!form?.quotedBudget || !form?.proposedDays || !form?.approach?.trim()) {
+      toast({ title: "Please fill Budget, Days and Approach", variant: "destructive" });
+      return;
+    }
+    setSubmittingProposal(bidId);
+    try {
+      await bidsApi.submitProposal(bidId, {
+        quotedBudget: form.quotedBudget,
+        proposedDays: form.proposedDays,
+        teamSize: form.teamSize || undefined,
+        approach: form.approach.trim(),
+      });
+      toast({ title: "📋 Proposal submitted!", description: "The SuperAdmin will review it." });
+      fetchAll();
+    } catch (err) {
+      toast({ title: "Failed to submit proposal", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmittingProposal(null);
+    }
+  };
+
+  const initProposalForm = (bid) => {
+    const existing = bid.proposals?.[0];
+    setProposalForms(prev => ({
+      ...prev,
+      [bid.id]: {
+        quotedBudget: existing?.quotedBudget || "",
+        proposedDays: existing?.proposedDays || "",
+        teamSize: existing?.teamSize || "",
+        approach: existing?.approach || "",
+      }
+    }));
+    setExpandedBidId(prev => prev === bid.id ? null : bid.id);
   };
 
   const compressImage = (file) => new Promise((resolve) => {
@@ -420,7 +465,170 @@ const SubAdminDashboard = () => {
         </div>
       )}
 
+      {/* ─── Project Bids Section ─── */}
+      <div className="mt-10">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center border border-amber-500/30">
+            <Gavel className="w-5 h-5 text-amber-400" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Project Bids</h2>
+            <p className="text-white/50 text-sm">Open tenders in your department — submit your proposal</p>
+          </div>
+          {deptBids.filter(b => b.proposals.length === 0).length > 0 && (
+            <span className="ml-auto bg-amber-500 text-black text-xs font-bold rounded-full px-3 py-1">
+              {deptBids.filter(b => b.proposals.length === 0).length} new
+            </span>
+          )}
+        </div>
+
+        {deptBids.length === 0 ? (
+          <div className="text-center py-16 bg-white/5 rounded-2xl border border-white/10">
+            <Gavel className="w-12 h-12 text-white/20 mx-auto mb-3" />
+            <p className="text-white/40 italic">No open bids in your department right now.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {deptBids.map(bid => {
+              const myProposal = bid.proposals?.[0];
+              const isExpanded = expandedBidId === bid.id;
+              const form = proposalForms[bid.id] || {};
+              const deadlinePassed = new Date(bid.deadline) < new Date();
+
+              return (
+                <div key={bid.id} className={`rounded-2xl border overflow-hidden ${
+                  myProposal?.status === "AWARDED" ? "border-emerald-500/40 bg-emerald-500/5" :
+                  myProposal?.status === "REJECTED" ? "border-rose-500/20 opacity-60" :
+                  myProposal ? "border-blue-500/30 bg-blue-500/5" :
+                  "border-amber-500/30 bg-amber-500/5"
+                }`}>
+                  {/* Bid Summary Row */}
+                  <div className="p-5 flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        {myProposal?.status === "AWARDED" && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                            <Trophy className="w-3 h-3" /> YOU WON
+                          </span>
+                        )}
+                        {myProposal?.status === "REJECTED" && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">Not Selected</span>
+                        )}
+                        {myProposal?.status === "PENDING" && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">⏳ Proposal Submitted</span>
+                        )}
+                        {!myProposal && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">🆕 Open</span>
+                        )}
+                        <span className="text-white/40 text-xs">#{bid.complaint?.id} · {bid.department}</span>
+                      </div>
+                      <h4 className="font-bold text-white">{bid.title}</h4>
+                      <p className="text-white/50 text-sm line-clamp-2 mt-0.5">{bid.scope}</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-white/40">
+                        {bid.estimatedBudget && <span>Est. ₹{bid.estimatedBudget.toLocaleString()}</span>}
+                        <span>Exp. timeline: {bid.projectTimeline}d</span>
+                        <span className={deadlinePassed ? "text-rose-400 font-bold" : ""}>
+                          Bid deadline: {new Date(bid.deadline).toLocaleDateString()}{deadlinePassed ? " (Closed)" : ""}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      {myProposal?.status !== "REJECTED" && (
+                        <button
+                          onClick={() => initProposalForm(bid)}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                            myProposal?.status === "AWARDED"
+                              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                              : myProposal
+                              ? "bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20"
+                              : "bg-amber-500/20 text-amber-400 border-amber-500/30 hover:bg-amber-500/30"
+                          }`}
+                        >
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          {myProposal?.status === "AWARDED" ? "View My Proposal" : myProposal ? "Edit Proposal" : "Submit Proposal"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Proposal Form */}
+                  {isExpanded && myProposal?.status !== "AWARDED" && (
+                    <div className="border-t border-white/10 p-5 space-y-4 bg-black/20">
+                      <p className="text-white/40 text-xs font-semibold uppercase tracking-wider">
+                        {myProposal ? "Edit Your Proposal (not yet awarded)" : "Your Proposal"}
+                      </p>
+                      <div className="grid sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-white/50 text-xs font-medium mb-1">Your Budget (₹) *</label>
+                          <input
+                            type="number" placeholder="e.g. 85000"
+                            value={form.quotedBudget || ""}
+                            onChange={e => setProposalForms(p => ({ ...p, [bid.id]: { ...p[bid.id], quotedBudget: e.target.value } }))}
+                            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-white/50 text-xs font-medium mb-1">Days to Complete *</label>
+                          <input
+                            type="number" placeholder="e.g. 12"
+                            value={form.proposedDays || ""}
+                            onChange={e => setProposalForms(p => ({ ...p, [bid.id]: { ...p[bid.id], proposedDays: e.target.value } }))}
+                            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-white/50 text-xs font-medium mb-1">Team Size</label>
+                          <input
+                            type="number" placeholder="No. of workers"
+                            value={form.teamSize || ""}
+                            onChange={e => setProposalForms(p => ({ ...p, [bid.id]: { ...p[bid.id], teamSize: e.target.value } }))}
+                            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-white/50 text-xs font-medium mb-1">Your Approach *</label>
+                        <textarea
+                          rows={3}
+                          placeholder="Describe how you'll complete this project, equipment needed, work phases..."
+                          value={form.approach || ""}
+                          onChange={e => setProposalForms(p => ({ ...p, [bid.id]: { ...p[bid.id], approach: e.target.value } }))}
+                          className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-4 py-2.5 focus:outline-none focus:border-amber-500 text-sm resize-none"
+                        />
+                      </div>
+                      <button
+                        onClick={() => handleSubmitProposal(bid.id)}
+                        disabled={submittingProposal === bid.id}
+                        className="w-full py-3 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+                      >
+                        <Gavel className="w-4 h-4" />
+                        {submittingProposal === bid.id ? "Submitting..." : myProposal ? "Update Proposal" : "Submit Proposal"}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Awarded view */}
+                  {isExpanded && myProposal?.status === "AWARDED" && (
+                    <div className="border-t border-emerald-500/20 p-5 bg-emerald-500/5">
+                      <p className="text-emerald-400 font-bold mb-3 flex items-center gap-2"><Trophy className="w-4 h-4" /> Your Winning Proposal</p>
+                      <div className="grid sm:grid-cols-3 gap-3 text-sm">
+                        <div><span className="text-white/40 block text-xs">Budget</span><span className="text-amber-400 font-bold">₹{myProposal.quotedBudget.toLocaleString()}</span></div>
+                        <div><span className="text-white/40 block text-xs">Timeline</span><span className="text-white font-semibold">{myProposal.proposedDays} days</span></div>
+                        {myProposal.teamSize && <div><span className="text-white/40 block text-xs">Team Size</span><span className="text-white font-semibold">{myProposal.teamSize} workers</span></div>}
+                      </div>
+                      <p className="text-white/60 text-sm mt-3">{myProposal.approach}</p>
+                      <p className="text-emerald-400/70 text-xs mt-3">✅ You have been assigned to the complaint. Check your assignments above.</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* ─── Extension Request Modal ─── */}
+
       <AnimatePresence>
         {extensionModal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">

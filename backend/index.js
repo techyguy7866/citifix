@@ -11,6 +11,7 @@ const superadminRoutes = require("./routes/superadmin");
 const subadminRoutes = require("./routes/subadmin");
 const chatRoutes = require("./routes/chat");
 const twitterRoutes = require("./routes/twitter");
+const bidsRoutes = require("./routes/bids");
 const { startEscalationScheduler } = require("./jobs/escalationScheduler");
 
 const prisma = new PrismaClient();
@@ -34,6 +35,7 @@ app.use("/api/superadmin", superadminRoutes);
 app.use("/api/subadmin", subadminRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/twitter", twitterRoutes);
+app.use("/api/bids", bidsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
